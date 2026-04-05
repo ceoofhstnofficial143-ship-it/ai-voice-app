@@ -52,8 +52,8 @@ export default function TTSGenerator({ initialText = '' }: { initialText?: strin
         const audio = new Audio(data.audioUrl);
         audio.play().catch(e => console.log('Autoplay blocked:', e));
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setIsLoading(false);
     }
