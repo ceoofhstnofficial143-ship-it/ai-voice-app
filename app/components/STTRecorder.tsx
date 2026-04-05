@@ -2,18 +2,46 @@
 
 import { useState, useEffect } from 'react';
 
+// Define Speak Recognition types for browsers that support it
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  [index: number]: {
+    transcript: string;
+  };
+}
+
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResult;
+  };
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: { error: string }) => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+}
+
 export default function STTRecorder({ onTranscription }: { onTranscription?: (text: string) => void }) {
   const [isRecording, setIsRecording] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [error, setError] = useState('');
-  const [recognition, setRecognition] = useState<any>(null);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
 
   useEffect(() => {
     // Initialize Web Speech API
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
+    if (SpeechRecognitionClass) {
+      const rec = new SpeechRecognitionClass() as SpeechRecognition;
       rec.continuous = false;
       rec.interimResults = true;
       rec.lang = 'en-US';
@@ -23,7 +51,7 @@ export default function STTRecorder({ onTranscription }: { onTranscription?: (te
         setError('');
       };
 
-      rec.onresult = (event: any) => {
+      rec.onresult = (event: SpeechRecognitionEvent) => {
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -43,7 +71,7 @@ export default function STTRecorder({ onTranscription }: { onTranscription?: (te
         }
       };
 
-      rec.onerror = (event: any) => {
+      rec.onerror = (event: { error: string }) => {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           setError('Microphone permission denied.');
