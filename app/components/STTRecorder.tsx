@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { pipeline, AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
+import { pipeline, AutomaticSpeechRecognitionPipeline, env } from '@huggingface/transformers';
+
+// Tell transformers.js not to look for local file system models since we are in the browser
+env.allowLocalModels = false;
 
 export default function STTRecorder({ onTranscription }: { onTranscription?: (text: string) => void }) {
   const [isRecording, setIsRecording] = useState(false);

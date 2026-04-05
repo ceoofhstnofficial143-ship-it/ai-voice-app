@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import TTSGenerator from '@/app/components/TTSGenerator';
-import STTRecorder from '@/app/components/STTRecorder';
 import AudioHistory from './history';
+
+const STTRecorder = dynamic(() => import('@/app/components/STTRecorder'), { ssr: false });
 
 async function DashboardHeader() {
   const supabase = await createClient();
