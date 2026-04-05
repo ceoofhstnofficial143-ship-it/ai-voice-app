@@ -92,11 +92,11 @@ export async function POST(request: NextRequest) {
       message: 'Speech generated successfully via fallback'
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('TTS API error:', error);
     return NextResponse.json({ 
       error: 'Failed to generate speech. Please try again.',
-      details: error?.message || String(error)
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
 }
