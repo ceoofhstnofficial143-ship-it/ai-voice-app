@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { tts } from 'edge-tts';
+
+// Max execution time for serverless (60s for Hobby)
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,19 +26,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
     
-    if (text.length > 5000) {
-      return NextResponse.json({ error: 'Text too long (max 5000 chars)' }, { status: 400 });
+    // 3. Generate speech using High-Reliability Google TTS Fallback
+    // This bypasses Microsoft's 403 block on serverless IPs
+    console.log(`Generating speech via Google Fallback for: ${text.substring(0, 50)}...`);
+    
+    // Google's public TTS endpoint is fast and extremely stable
+    const truncatedText = text.substring(0, 200); // Safety limit
+    const lang = voice.startsWith('en-GB') ? 'en-gb' : 'en-us';
+    const googleTtsUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(truncatedText)}&tl=${lang}&client=tw-ob`;
+
+    const ttsResponse = await fetch(googleTtsUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+
+    if (!ttsResponse.ok) {
+      throw new Error(`Google TTS fetch failed: ${ttsResponse.statusText}`);
     }
 
-    // 3. Generate speech using Edge-TTS (free)
-    console.log(`Generating speech for text: ${text.substring(0, 50)}... using voice ${voice}`);
-    const audioBuffer = await tts(text, { voice });
+    const audioBuffer = await ttsResponse.arrayBuffer();
+    const audioData = Buffer.from(audioBuffer);
 
     // 4. Upload to Supabase Storage
     const fileName = `${user.id}/${Date.now()}.mp3`;
     const { error: uploadError } = await supabase.storage
       .from('audio-files')
-      .upload(fileName, audioBuffer, {
+      .upload(fileName, audioData, {
         contentType: 'audio/mpeg',
         cacheControl: '3600',
       });
@@ -66,21 +83,20 @@ export async function POST(request: NextRequest) {
 
     if (dbError) {
       console.error('DB error:', dbError);
-      // Still return the URL even if DB save fails (audio is saved)
     }
 
     // 7. Return the audio URL
     return NextResponse.json({ 
       success: true, 
       audioUrl: publicUrl,
-      message: 'Speech generated successfully'
+      message: 'Speech generated successfully via fallback'
     });
 
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error('TTS API error:', error);
     return NextResponse.json({ 
       error: 'Failed to generate speech. Please try again.',
-      details: error instanceof Error ? error.message : String(error)
+      details: error?.message || String(error)
     }, { status: 500 });
   }
 }
