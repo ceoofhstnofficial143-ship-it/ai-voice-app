@@ -17,9 +17,7 @@ export default async function AudioHistory() {
   }
 
   return (
-    <div className="mt-8">
-      <h2 className="text-xl font-bold mb-4">Your Audio History</h2>
-      <div className="space-y-3">
+    <div className="mt-8 space-y-3">
         {entries.map((entry) => (
           <div key={entry.id} className="border p-3 rounded-md">
             <p className="text-sm text-gray-600">
@@ -30,7 +28,6 @@ export default async function AudioHistory() {
             <audio controls src={entry.audio_url} className="mt-2 w-full" />
           </div>
         ))}
-      </div>
     </div>
   );
 }

@@ -9,7 +9,11 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.error('Auth error in TTS API:', authError);
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: authError?.message || 'No active session found' 
+      }, { status: 401 });
     }
 
     // 2. Parse request body
@@ -24,6 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Generate speech using Edge-TTS (free)
+    console.log(`Generating speech for text: ${text.substring(0, 50)}... using voice ${voice}`);
     const audioBuffer = await tts(text, { voice });
 
     // 4. Upload to Supabase Storage
@@ -37,7 +42,11 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error('Upload error:', uploadError);
-      return NextResponse.json({ error: 'Failed to save audio' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to save audio', 
+        details: uploadError.message,
+        hint: 'Make sure the "audio-files" bucket exists in Supabase and is Public.'
+      }, { status: 500 });
     }
 
     // 5. Get public URL
@@ -67,10 +76,11 @@ export async function POST(request: NextRequest) {
       message: 'Speech generated successfully'
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('TTS API error:', error);
     return NextResponse.json({ 
-      error: 'Failed to generate speech. Please try again.' 
+      error: 'Failed to generate speech. Please try again.',
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
 }

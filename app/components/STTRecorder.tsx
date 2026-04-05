@@ -1,110 +1,79 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { pipeline, AutomaticSpeechRecognitionPipeline, env } from '@huggingface/transformers';
-
-// Tell transformers.js not to look for local file system models since we are in the browser
-env.allowLocalModels = false;
+import { useState, useEffect } from 'react';
 
 export default function STTRecorder({ onTranscription }: { onTranscription?: (text: string) => void }) {
   const [isRecording, setIsRecording] = useState(false);
-  const [isModelLoading, setIsModelLoading] = useState(true);
   const [transcription, setTranscription] = useState('');
   const [error, setError] = useState('');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const transcriberRef = useRef<AutomaticSpeechRecognitionPipeline | null>(null);
+  const [recognition, setRecognition] = useState<any>(null);
 
-  // Load Whisper model once when component mounts
   useEffect(() => {
-    const loadModel = async () => {
-      try {
-        setIsModelLoading(true);
-        // Using tiny model for speed (good balance of speed/accuracy)
-        // Alternative: 'Xenova/whisper-base' for better accuracy (slower)
-        const transcriber = await pipeline(
-          'automatic-speech-recognition',
-          'Xenova/whisper-tiny.en'
-        );
-        transcriberRef.current = transcriber;
-        console.log('Whisper model loaded');
-      } catch (err) {
-        console.error('Failed to load Whisper model:', err);
-        setError('Failed to load speech recognition model. Please refresh the page.');
-      } finally {
-        setIsModelLoading(false);
-      }
-    };
-    loadModel();
-  }, []);
-
-  const startRecording = async () => {
-    setError('');
-    setTranscription('');
+    // Initialize Web Speech API
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      rec.onstart = () => {
+        setIsRecording(true);
+        setError('');
+      };
+
+      rec.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        const currentText = finalTranscript || interimTranscript;
+        setTranscription(currentText);
+        
+        if (finalTranscript && onTranscription) {
+          onTranscription(finalTranscript);
         }
       };
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await transcribeAudio(audioBlob);
-        // Stop all microphone tracks
-        stream.getTracks().forEach(track => track.stop());
+      rec.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          setError('Microphone permission denied.');
+        } else {
+          setError('Speech recognition error. Please try again.');
+        }
+        setIsRecording(false);
       };
 
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Microphone error:', err);
-      setError('Could not access microphone. Please check permissions.');
+      rec.onend = () => {
+        setIsRecording(false);
+      };
+
+      setRecognition(rec);
+    } else {
+      setError('Your browser does not support Speech Recognition. Please try Chrome, Edge, or Safari.');
     }
-  };
+  }, [onTranscription]);
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
+  const toggleRecording = () => {
+    if (!recognition) return;
 
-  const transcribeAudio = async (audioBlob: Blob) => {
-    if (!transcriberRef.current) {
-      setError('Model not ready yet. Please wait.');
-      return;
-    }
-
-    try {
-      // Convert blob to URL and load as audio
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      
-      // Wait for audio metadata to load
-      await new Promise((resolve) => {
-        audio.addEventListener('loadedmetadata', resolve);
-      });
-
-      // Transcribe
-      const result = await transcriberRef.current(audioUrl);
-      const transcribedText = result.text;
-      
-      setTranscription(transcribedText);
-      if (onTranscription) {
-        onTranscription(transcribedText);
+    if (isRecording) {
+      recognition.stop();
+    } else {
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error('Failed to start recognition:', err);
       }
-      
-      URL.revokeObjectURL(audioUrl);
-    } catch (err) {
-      console.error('Transcription error:', err);
-      setError('Failed to transcribe audio. Please try again.');
     }
   };
 
@@ -112,27 +81,21 @@ export default function STTRecorder({ onTranscription }: { onTranscription?: (te
     <div className="p-4 border rounded-md bg-gray-50 text-gray-900 h-full">
       <h3 className="text-lg font-semibold mb-3">Speech to Text</h3>
       
-      {isModelLoading && (
-        <div className="text-blue-600 mb-3 text-sm">
-          Loading speech recognition model (once, ~5MB)... Please wait.
-        </div>
-      )}
-
       <div className="flex gap-3 mb-4">
         {!isRecording ? (
           <button
-            onClick={startRecording}
-            disabled={isModelLoading}
-            className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            onClick={toggleRecording}
+            disabled={!recognition}
+            className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
           >
-            🎙️ Start Recording
+            🎙️ Start Speaking
           </button>
         ) : (
           <button
-            onClick={stopRecording}
-            className="w-full bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors animate-pulse"
+            onClick={toggleRecording}
+            className="w-full bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors animate-pulse font-medium flex items-center justify-center gap-2"
           >
-            ⏹️ Stop Recording
+             ⏹️ Stop Listening
           </button>
         )}
       </div>
@@ -146,10 +109,16 @@ export default function STTRecorder({ onTranscription }: { onTranscription?: (te
       {transcription && (
         <div className="mt-4">
           <label className="block text-sm font-medium mb-2">Transcription:</label>
-          <div className="p-3 bg-white border rounded-md min-h-[120px] text-gray-800">
+          <div className="p-3 bg-white border rounded-md min-h-[120px] text-gray-800 shadow-sm transition-all duration-200">
             {transcription}
           </div>
         </div>
+      )}
+
+      {!recognition && !error && (
+        <p className="text-[12px] text-gray-500 text-center">
+          Initializing speech recognition...
+        </p>
       )}
     </div>
   );
