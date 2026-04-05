@@ -38,6 +38,7 @@ export default function STTRecorder({ onTranscription }: { onTranscription?: (te
 
   useEffect(() => {
     // Initialize Web Speech API
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (SpeechRecognitionClass) {
